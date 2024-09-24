@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maze Solver RL</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #container {
+            text-align: center;
+        }
+        #maze {
+            display: inline-block;
+            border: 2px solid #333;
+        }
+        .cell {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            display: inline-block;
+            vertical-align: top;
+            box-sizing: border-box;
+        }
+        .wall { background-color: #333; }
+        .start { background-color: #4CAF50; }
+        .goal { background-color: #F44336; }
+        .agent { background-color: #2196F3; }
+        .path { background-color: #FFC107; }
+        button {
+            margin: 10px 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Improved Maze Solver Reinforcement Learning</h1>
+        <div id="maze"></div>
+        <button id="trainButton">Train Agent</button>
+        <button id="runEpisodeButton">Run Single Episode</button>
+        <button id="showPathButton">Show Learned Path</button>
+        <p id="info"></p>
+    </div>
+    <script>
+        const maze = [
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+            [1, 1, 0, 1, 0, 1, 0, 1, 1, 0],
+            [0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
+            [0, 1, 1, 1, 0, 1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 1, 2]
+        ];
+
+        const ROWS = maze.length;
+        const COLS = maze[0].length;
+        const START = [0, 0];
+        const GOAL = [ROWS - 1, COLS - 1];
+
+        const ACTIONS = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // up, down, left, right
+        const EPSILON = 0.1;
+        const ALPHA = 0.1;
+        const GAMMA = 0.9;
+
+        let qTable = {};
+        let currentState = START;
+        let episodeCount = 0;
+
+        function initializeMaze() {
+            const mazeElement = document.getElementById('maze');
+            mazeElement.innerHTML = '';
+            for (let i = 0; i < ROWS; i++) {
+                for (let j = 0; j < COLS; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.id = `cell-${i}-${j}`;
+                    if (maze[i][j] === 1) cell.classList.add('wall');
+                    if (i === START[0] && j === START[1]) cell.classList.add('start');
+                    if (i === GOAL[0] && j === GOAL[1]) cell.classList.add('goal');
+                    mazeElement.appendChild(cell);
+                }
+                mazeElement.appendChild(document.createElement('br'));
+            }
+        }
+
+        function getState(position) {
+            return `${position[0]},${position[1]}`;
+        }
+
+        function getQValue(state, action) {
+            const key = `${state},${action}`;
+            return qTable[key] || 0;
+        }
+
+        function setQValue(state, action, value) {
+            const key = `${state},${action}`;
+            qTable[key] = value;
+        }
+
+        function chooseAction(state, epsilon) {
+            if (Math.random() < epsilon) {
+                return Math.floor(Math.random() * ACTIONS.length);
+            } else {
+                let bestAction = 0;
+                let maxQValue = -Infinity;
+                for (let i = 0; i < ACTIONS.length; i++) {
+                    const qValue = getQValue(state, i);
+                    if (qValue > maxQValue) {
+                        maxQValue = qValue;
+                        bestAction = i;
+                    }
+                }
+                return bestAction;
+            }
+        }
+
+        function step(action) {
+            const [dx, dy] = ACTIONS[action];
+            const newPosition = [
+                Math.max(0, Math.min(ROWS - 1, currentState[0] + dx)),
+                Math.max(0, Math.min(COLS - 1, currentState[1] + dy))
+            ];
+
+            if (maze[newPosition[0]][newPosition[1]] === 1) {
+                return [currentState, -1, false];
+            }
+
+            const reward = (newPosition[0] === GOAL[0] && newPosition[1] === GOAL[1]) ? 100 : -1;
+            const done = reward === 100;
+
+            return [newPosition, reward, done];
+        }
+
+        function updateMaze(path = []) {
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.classList.remove('agent', 'path');
+            });
+            path.forEach(([x, y]) => {
+                document.getElementById(`cell-${x}-${y}`).classList.add('path');
+            });
+            document.getElementById(`cell-${currentState[0]}-${currentState[1]}`).classList.add('agent');
+        }
+
+        async function runEpisode(epsilon = EPSILON, delay = 50) {
+            currentState = [...START];
+            updateMaze();
+            let steps = 0;
+            let totalReward = 0;
+
+            while (true) {
+                steps++;
+                const state = getState(currentState);
+                const action = chooseAction(state, epsilon);
+                const [newState, reward, done] = step(action);
+
+                const oldQValue = getQValue(state, action);
+                const nextMaxQ = Math.max(...ACTIONS.map((_, i) => getQValue(getState(newState), i)));
+                const newQValue = oldQValue + ALPHA * (reward + GAMMA * nextMaxQ - oldQValue);
+
+                setQValue(state, action, newQValue);
+
+                currentState = newState;
+                totalReward += reward;
+                updateMaze();
+
+                if (done) break;
+
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+
+            return { steps, totalReward };
+        }
+
+        async function train(episodes = 1000) {
+            const infoElement = document.getElementById('info');
+            for (let i = 0; i < episodes; i++) {
+                episodeCount++;
+                const { steps, totalReward } = await runEpisode(EPSILON, 0);
+                infoElement.textContent = `Episode: ${episodeCount}, Steps: ${steps}, Total Reward: ${totalReward}`;
+                if ((i + 1) % 100 === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
+            }
+            infoElement.textContent += " - Training completed!";
+        }
+
+        async function showLearnedPath() {
+            currentState = [...START];
+            let path = [currentState];
+            let steps = 0;
+
+            while (true) {
+                steps++;
+                const state = getState(currentState);
+                const action = chooseAction(state, 0);  // Use epsilon = 0 to always choose the best action
+                const [newState, _, done] = step(action);
+
+                currentState = newState;
+                path.push(currentState);
+                updateMaze(path);
+
+                if (done) break;
+
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            document.getElementById('info').textContent = `Learned path length: ${steps} steps`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeMaze();
+            document.getElementById('trainButton').addEventListener('click', () => train(1000));
+            document.getElementById('runEpisodeButton').addEventListener('click', () => runEpisode(EPSILON, 50));
+            document.getElementById('showPathButton').addEventListener('click', showLearnedPath);
+        });
+    </script>
+</body>
+</html>
