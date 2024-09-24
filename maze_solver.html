@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Maze Solver RL</title>
+    <title>Maze Solver RL with Learning Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -20,6 +21,7 @@
         #maze {
             display: inline-block;
             border: 2px solid #333;
+            margin-bottom: 20px;
         }
         .cell {
             width: 20px;
@@ -40,16 +42,24 @@
             font-size: 16px;
             cursor: pointer;
         }
+        #chartContainer {
+            width: 600px;
+            height: 300px;
+            margin: 20px auto;
+        }
     </style>
 </head>
 <body>
     <div id="container">
-        <h1>Improved Maze Solver Reinforcement Learning</h1>
+        <h1>Maze Solver RL with Learning Visualization</h1>
         <div id="maze"></div>
         <button id="trainButton">Train Agent</button>
         <button id="runEpisodeButton">Run Single Episode</button>
         <button id="showPathButton">Show Learned Path</button>
         <p id="info"></p>
+        <div id="chartContainer">
+            <canvas id="learningChart"></canvas>
+        </div>
     </div>
     <script>
         const maze = [
@@ -78,6 +88,9 @@
         let qTable = {};
         let currentState = START;
         let episodeCount = 0;
+        let learningData = [];
+
+        let chart;
 
         function initializeMaze() {
             const mazeElement = document.getElementById('maze');
@@ -94,6 +107,46 @@
                 }
                 mazeElement.appendChild(document.createElement('br'));
             }
+        }
+
+        function initializeChart() {
+            const ctx = document.getElementById('learningChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Steps per Episode',
+                        data: [],
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Episode'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Steps'
+                            },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(episode, steps) {
+            chart.data.labels.push(episode);
+            chart.data.datasets[0].data.push(steps);
+            chart.update();
         }
 
         function getState(position) {
@@ -190,8 +243,9 @@
                 episodeCount++;
                 const { steps, totalReward } = await runEpisode(EPSILON, 0);
                 infoElement.textContent = `Episode: ${episodeCount}, Steps: ${steps}, Total Reward: ${totalReward}`;
-                if ((i + 1) % 100 === 0) {
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                updateChart(episodeCount, steps);
+                if ((i + 1) % 10 === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 1));
                 }
             }
             infoElement.textContent += " - Training completed!";
@@ -222,6 +276,7 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             initializeMaze();
+            initializeChart();
             document.getElementById('trainButton').addEventListener('click', () => train(1000));
             document.getElementById('runEpisodeButton').addEventListener('click', () => runEpisode(EPSILON, 50));
             document.getElementById('showPathButton').addEventListener('click', showLearnedPath);
